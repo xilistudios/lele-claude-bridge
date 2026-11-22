@@ -27,6 +27,7 @@ import {
   INSTALL_HINT,
   MCP_TOOL_PREFIX,
   QuerySession,
+  SDK_PACKAGE,
   buildPrompt,
   buildQueryOptions,
   buildTranscript,
@@ -649,7 +650,22 @@ test('resolveEntryFile follows exports, then module/main, then sdk.mjs', () => {
   assert.equal(resolveEntryFile(dir, { exports: './dist/main.mjs' }), path.resolve(dir, 'dist/main.mjs'));
 });
 
-test('resolveSdk loads a package found through a search path', async () => {
+// The search-path tests below only describe a directory where the bare
+// specifier does not resolve; inside an installed bridge dir it does.
+async function bareSdkResolves() {
+  try {
+    await import(SDK_PACKAGE);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+test('resolveSdk loads a package found through a search path', async (t) => {
+  if (await bareSdkResolves()) {
+    t.skip('the SDK resolves as a bare specifier in this directory');
+    return;
+  }
   const root = mkdtempSync(path.join(tmpdir(), 'lele-bridge-sdk-'));
   try {
     const pkgDir = path.join(root, '@anthropic-ai', 'claude-agent-sdk');
@@ -693,7 +709,11 @@ test('resolveSdk reports the actionable install hint when nothing resolves', asy
   } finally {
     rmSync(empty, { recursive: true, force: true });
   }
-});test('resolveSdk falls back to NODE_PATH entries', async () => {
+});test('resolveSdk falls back to NODE_PATH entries', async (t) => {
+  if (await bareSdkResolves()) {
+    t.skip('the SDK resolves as a bare specifier in this directory');
+    return;
+  }
   const root = mkdtempSync(path.join(tmpdir(), 'lele-bridge-nodepath-'));
   const previous = process.env.NODE_PATH;
   try {
