@@ -1,0 +1,32 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['18.14', '20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --test bridge_test.mjs
+
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: install into a throwaway dir
+        run: sh install.sh --dir "$RUNNER_TEMP/lele-cfg/claude-bridge"
+      - name: SDK landed next to the bridge
+        run: test -f "$RUNNER_TEMP/lele-cfg/claude-bridge/node_modules/@anthropic-ai/claude-agent-sdk/package.json"
+      - name: unit tests still green WITH the SDK present (success branch of the hint test)
+        run: cd "$RUNNER_TEMP/lele-cfg/claude-bridge" && node --test bridge_test.mjs
