@@ -28,5 +28,5 @@ jobs:
         run: sh install.sh --dir "$RUNNER_TEMP/lele-cfg/claude-bridge"
       - name: SDK landed next to the bridge
         run: test -f "$RUNNER_TEMP/lele-cfg/claude-bridge/node_modules/@anthropic-ai/claude-agent-sdk/package.json"
-      - name: unit tests still green WITH the SDK present (success branch of the hint test)
+      - name: unit tests still green WITH the SDK present (2 search-path tests skip)
         run: cd "$RUNNER_TEMP/lele-cfg/claude-bridge" && node --test bridge_test.mjs

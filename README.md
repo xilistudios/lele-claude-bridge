@@ -39,12 +39,15 @@ The installer:
 1. resolves the install directory (`${LELE_CONFIG_DIR:-$HOME/.lele}/claude-bridge`);
 2. checks node ≥ 18.14, npm and tar;
 3. downloads the repo tarball from codeload (git clone as fallback);
-4. stages the files and `node_modules` **beside** the target directory, then
-   swaps it in with two atomic renames (a failed run leaves the previous install
-   untouched);
+4. stages the files and `node_modules` **beside** the target directory;
 5. runs `npm ci --omit=dev` for the pinned SDK;
-6. writes `.install-info.json` and smoke-tests the handshake: the installed
-   bridge must answer `{"type":"ready",...}` before the installer calls it done.
+6. writes `.install-info.json` and smoke-tests the handshake **of the staged
+   copy**: it must answer `{"type":"ready",...}` within 30 s (the child is
+   killed on expiry) before the live directory is touched;
+7. swaps the staged tree in with two atomic renames.
+
+A failed run — download, npm, or handshake — leaves the previous install
+byte-identical and removes the staging directory.
 
 Flags (everything after `sh -s --` when piping):
 
@@ -56,8 +59,9 @@ Flags (everything after `sh -s --` when piping):
 | `--help` | — | Usage text. |
 
 `LELE_CONFIG_DIR` is honored exactly as lele honors it, including a leading
-`~/`. Prefer **absolute** paths: lele resolves a relative `LELE_CONFIG_DIR`
-against its own working directory, the installer against its own.
+`~/` (only `~` and `~/…` expand; `~user/…` is taken as a literal path). Prefer
+**absolute** paths: lele resolves a relative `LELE_CONFIG_DIR` against its own
+working directory, the installer against its own.
 
 Pin a release:
 

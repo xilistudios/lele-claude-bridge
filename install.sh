@@ -13,8 +13,11 @@ REPO="xilistudios/lele-claude-bridge"
 REF="main"
 SKIP_SDK=0
 DIR_ARG=""
+DIR_SET=0
+REF_SET=0
 NODE_MIN_MAJOR=18
 NODE_MIN_MINOR=14
+SMOKE_TIMEOUT=30
 
 usage() {
   cat <<EOF
@@ -50,10 +53,8 @@ http_get() {
   url="$1"; dst="$2"
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL -o "$dst" "$url"
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$dst" "$url"
   else
-    err "curl or wget is required."
+    wget -qO "$dst" "$url"
   fi
 }
 
@@ -64,11 +65,13 @@ while [ "$#" -gt 0 ]; do
     --dir)
       [ "$#" -ge 2 ] || err "--dir requires a directory"
       DIR_ARG="$2"
+      DIR_SET=1
       shift 2
       ;;
     --ref)
       [ "$#" -ge 2 ] || err "--ref requires a git ref"
       REF="$2"
+      REF_SET=1
       shift 2
       ;;
     --skip-sdk)
@@ -92,7 +95,7 @@ normalize_dir() {
   tilde="~"
   case "$dir" in
     "$tilde")   dir="$HOME" ;;
-    "$tilde"/*) dir="$HOME/${dir#"$tilde"}";;
+    "$tilde"/*) dir="$HOME/${dir#"$tilde"/}";;
   esac
   while [ "${#dir}" -gt 1 ] && [ "${dir%/}" != "$dir" ]; do
     dir="${dir%/}"
@@ -107,13 +110,16 @@ case "$DEFAULT_DIR" in
   *) DEFAULT_DIR="$(pwd)/$DEFAULT_DIR" ;;
 esac
 
-if [ -n "$DIR_ARG" ]; then
+if [ "$DIR_SET" -eq 1 ]; then
   DIR="$(normalize_dir "$DIR_ARG")"
 else
   DIR="$(normalize_dir "${LELE_CONFIG_DIR:-$HOME/.lele}/claude-bridge")"
 fi
 
 [ -n "$DIR" ] || err "the install directory is empty"
+if [ "$REF_SET" -eq 1 ] && [ -z "$REF" ]; then
+  err "the git ref is empty"
+fi
 [ "$DIR" != "/" ] || err "refusing to install into /"
 
 case "$DIR" in
@@ -126,12 +132,18 @@ case "$DIR" in
     ;;
 esac
 
+PARENT="$(dirname "$DIR")"
+mkdir -p "$PARENT"
+PARENT="$(cd "$PARENT" && pwd)"
+DIR="${PARENT%/}/$(basename "$DIR")"
+if [ -d "$DIR" ]; then
+  DIR="$(cd "$DIR" && pwd)"
+fi
+
+[ "$DIR" != "/" ] || err "refusing to install into /"
 if [ -e "$DIR" ] && [ ! -d "$DIR" ]; then
   err "$DIR exists and is not a directory"
 fi
-
-PARENT="$(dirname "$DIR")"
-mkdir -p "$PARENT"
 
 # ── Preflight ────────────────────────────────────────────────────────
 
@@ -248,9 +260,47 @@ process.stdout.write(pin);
 fi
 
 INSTALLED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-printf '{"repo":"%s","ref":"%s","installed_at":"%s","sdk":"%s"}\n' \
-  "$REPO" "$REF" "$INSTALLED_AT" "$SDK_MARKER" > "$STAGING/install/.install-info.json"
+BRIDGE_REPO="$REPO" BRIDGE_REF="$REF" BRIDGE_INSTALLED_AT="$INSTALLED_AT" BRIDGE_SDK="$SDK_MARKER" \
+  node -e '
+const fs = require("node:fs");
+fs.writeFileSync(process.argv[1], JSON.stringify({
+  repo: process.env.BRIDGE_REPO,
+  ref: process.env.BRIDGE_REF,
+  installed_at: process.env.BRIDGE_INSTALLED_AT,
+  sdk: process.env.BRIDGE_SDK,
+}) + "\n");
+' "$STAGING/install/.install-info.json" ||
+  err "could not write $STAGING/install/.install-info.json"
 chmod 0644 "$STAGING/install/.install-info.json"
+
+# ── Handshake smoke test (staged copy, before the swap) ──────────────
+
+if [ "$SKIP_SDK" -eq 0 ]; then
+  SMOKE_OUT="$STAGING/handshake.out"
+  printf '%s\n' '{"type":"init","sdk_search_paths":[],"claude_path":""}' |
+    node "$STAGING/install/bridge.mjs" >"$SMOKE_OUT" 2>/dev/null &
+  SMOKE_PID=$!
+  SMOKE_WAITED=0
+  while [ "$SMOKE_WAITED" -lt "$SMOKE_TIMEOUT" ]; do
+    if grep -q '"type":"ready"' "$SMOKE_OUT" 2>/dev/null; then
+      break
+    fi
+    if ! kill -0 "$SMOKE_PID" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+    SMOKE_WAITED=$((SMOKE_WAITED + 1))
+  done
+  kill "$SMOKE_PID" 2>/dev/null || true
+  wait "$SMOKE_PID" 2>/dev/null || true
+  READY="$(sed -n 1p "$SMOKE_OUT" 2>/dev/null)"
+  case "$READY" in
+    *'"type":"ready"'*) ;;
+    *)
+      err "the staged bridge did not report ready (waited up to ${SMOKE_TIMEOUT}s): ${READY:-no output on stdout}; nothing was changed in $DIR"
+      ;;
+  esac
+fi
 
 # ── Swap into place ──────────────────────────────────────────────────
 
@@ -268,17 +318,6 @@ else
     mv "$OLD" "$DIR" || err "could not move the new bridge into $DIR and the rollback failed; the previous install is at $OLD"
   fi
   err "could not move the new bridge into $DIR"
-fi
-
-# ── Handshake smoke test ─────────────────────────────────────────────
-
-if [ "$SKIP_SDK" -eq 0 ]; then
-  READY="$(printf '%s\n' '{"type":"init","sdk_search_paths":[],"claude_path":""}' |
-    node "$DIR/bridge.mjs" 2>/dev/null | head -1)"
-  case "$READY" in
-    *'"type":"ready"'*) ;;
-    *) err "the installed bridge did not report ready: $READY" ;;
-  esac
 fi
 
 # ── Done ─────────────────────────────────────────────────────────────
