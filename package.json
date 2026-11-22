@@ -1,0 +1,17 @@
+{
+  "name": "lele-claude-bridge",
+  "version": "0.1.0",
+  "description": "Official Claude Code bridge for lele — drives the Claude Agent SDK over stdio JSON lines (subscription auth, no API key).",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "test": "node --test bridge_test.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.329"
+  },
+  "engines": {
+    "node": ">=18.14.0"
+  }
+}
