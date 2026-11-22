@@ -100,7 +100,7 @@ Environment knobs:
 | `LELE_CLAUDE_BRIDGE_PATH` | lele | Directory containing `bridge.mjs` + `bridge_lib.mjs`, **or** a direct path to `bridge.mjs`. Default `<lele-dir>/claude-bridge`. |
 | `LELE_CONFIG_DIR` | lele + installer | Relocates all lele state, hence the default bridge dir. |
 | `LELE_NODE_BIN` | lele | node binary lele spawns for the bridge (default `node` from lele's PATH). |
-| `CLAUDE_AGENT_SDK_PATH` | bridge | `node_modules` directory to resolve the SDK from, ahead of every other candidate. Use it with a global SDK install. |
+| `CLAUDE_AGENT_SDK_PATH` | bridge | `node_modules` directory to resolve the SDK from when the bare `@anthropic-ai/claude-agent-sdk` specifier does not resolve from the install directory. Use it with a global SDK install. |
 | `CLAUDE_CODE_PATH` | lele | `claude` CLI binary, when it is not on PATH. |
 
 Note: the **installer** uses `node`/`npm` from *your* PATH, while **lele** spawns
@@ -159,7 +159,8 @@ npm test                        # same thing
 CI runs that suite on node 18.14, 20 and 22 (no SDK installed — that is the
 point: nothing here imports the SDK at load time), plus an install smoke test
 that runs `install.sh` into a throwaway directory and re-runs the suite with the
-SDK present.
+SDK present (there the two search-path tests skip: with a side-by-side
+`node_modules` the bare specifier resolves first).
 
 **Bumping the SDK pin** (it is pinned to an exact version on purpose: the bridge
 touches SDK internals such as the low-level MCP `Server` and
