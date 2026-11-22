@@ -160,7 +160,18 @@ need tar
 
 STAGING="$(mktemp -d "$PARENT/claude-bridge.staging.XXXXXX")"
 OLD=""
-trap 'rm -rf "$STAGING"; if [ -n "$OLD" ]; then rm -rf "$OLD"; fi' EXIT
+SWAPPED=0
+
+cleanup() {
+  rm -rf "$STAGING"
+  if [ "$SWAPPED" -eq 1 ] && [ -n "$OLD" ]; then
+    rm -rf "$OLD"
+  fi
+}
+
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 fetch_tarball() {
   if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
@@ -248,6 +259,7 @@ if [ -d "$DIR" ]; then
   mv "$DIR" "$OLD" || err "could not move the existing install aside"
 fi
 if mv "$STAGING/install" "$DIR"; then
+  SWAPPED=1
   if [ -n "$OLD" ]; then
     rm -rf "$OLD"
   fi
